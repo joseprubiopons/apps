@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Nombres Aleatoris</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            text-align: center;
+            padding: 30px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 12px 25px;
+            font-size: 1rem;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .resultat {
+            font-size: 2.2rem;
+            font-weight: bold;
+            margin-top: 25px;
+            color: #28a745;
+            letter-spacing: 2px;
+            min-height: 50px; /* Per evitar salts de disseny */
+            word-wrap: break-word;
+        }
+        .separator {
+            border: 0;
+            height: 1px;
+            background: #e0e0e0;
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Primer generador: C, D, U -->
+        <div>
+            <h1>Generador de Xifres Aleatòries</h1>
+            <p>Fes clic per generar una xifra per a centenes, desenes i unitats.</p>
+            <button onclick="generarXifres()">Genera Xifres</button>
+            <div id="resultat-cdu" class="resultat"></div>
+        </div>
+
+        <hr class="separator">
+
+        <!-- Segon generador: 6 nombres -->
+        <div>
+            <h1>Generador de 6 Nombres Aleatoris</h1>
+            <p>Fes clic per generar 6 nombres a l'atzar de la llista predefinida.</p>
+            <button onclick="generar6Numeros()">Genera 6 Nombres</button>
+            <div id="resultat-6" class="resultat"></div>
+        </div>
+    </div>
+
+    <script>
+        function generarXifres() {
+            // Genera un nombre aleatori entre 0 i 9 per a cada posició.
+            const centenes = Math.floor(Math.random() * 8+1);
+            const desenes = Math.floor(Math.random() * 10);
+            const unitats = Math.floor(Math.random() * 8+1);
+
+            // Construeix el text del resultat.
+            const resultatText = `C: ${centenes} &nbsp;&nbsp; D: ${desenes} &nbsp;&nbsp; U: ${unitats}`;
+
+            // Mostra el resultat a la pantalla.
+            document.getElementById('resultat-cdu').innerHTML = resultatText;
+        }
+
+        function generar6Numeros() {
+            // Definim la llista de números de la qual escollirem.
+            const numerosDisponibles = [1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,25,50,75,100];
+            
+            // Creem una còpia de la llista per poder-la modificar sense afectar l'original.
+            let copiaNumeros = [...numerosDisponibles];
+
+            // Creem un array buit per emmagatzemar els números seleccionats.
+            let numerosGenerats = [];
+
+            // Repetim el procés 6 vegades.
+            for (let i = 0; i < 6; i++) {
+                // Obtenim un índex aleatori basat en la mida actual de la llista.
+                const indexAleatori = Math.floor(Math.random() * copiaNumeros.length);
+                
+                // Treiem el número de la llista (splice) i l'afegim al nostre resultat.
+                // splice retorna un array amb els elements eliminats, per això agafem el [0].
+                const numeroSeleccionat = copiaNumeros.splice(indexAleatori, 1)[0];
+                numerosGenerats.push(numeroSeleccionat);
+            }
+
+            // Mostrem el resultat a la pantalla, unint els números amb un guió.
+            document.getElementById('resultat-6').textContent = numerosGenerats.join(' - ');
+        }
+        
+        // Genera valors inicials en carregar la pàgina.
+        window.onload = function() {
+            generarXifres();
+            generar6Numeros();
+        };
+    </script>
+
+</body>
+</html>
+
