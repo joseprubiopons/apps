@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passaparula de la Mari</title>
+    <!-- Carreguem Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estils personalitzats per al Rosco (Anell de lletres) */
+        .rosco-container {
+            width: 320px;
+            height: 320px;
+            position: relative;
+            margin: 0 auto;
+        }
+
+        .letter-circle {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            font-weight: bold;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease-in-out;
+            cursor: pointer;
+        }
+
+        /* Colors del Rosco */
+        .unanswered {
+            background-color: #fcd34d; /* Groc fosc */
+            color: #1f2937; /* Gris fosc */
+        }
+        .correct {
+            background-color: #34d399; /* Verd */
+            color: white;
+            animation: pulse-green 0.5s ease;
+        }
+        .incorrect {
+            background-color: #ef4444; /* Vermell */
+            color: white;
+            animation: pulse-red 0.5s ease;
+        }
+        .passed {
+            background-color: #60a5fa; /* Blau clar */
+            color: white;
+        }
+        .current {
+            background-color: #fb923c; /* Taronja brillant per destacar */
+            color: white;
+            box-shadow: 0 0 15px #f97316;
+            transform: scale(1.1);
+        }
+
+        @keyframes pulse-green {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1.1); }
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1.1); }
+        }
+
+        /* Estil per al botó de TTS */
+        .tts-button {
+            transition: background-color 0.15s ease-in-out, transform 0.05s ease-in-out;
+        }
+        .tts-button:active {
+            transform: scale(0.98);
+        }
+    </style>
+    <!-- Carreguem Firebase i Firestore -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Configuració global de Firebase (OBLIGATORI per a l'entorn)
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pasapalabra-app-id';
+
+        // Inicialització de Firebase
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setLogLevel('Debug'); // Per veure logs de Firebase
+        
+            // Autenticació
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch(error => {
+                    console.error("Error en signInWithCustomToken:", error);
+                });
+            } else {
+                signInAnonymously(auth).catch(error => {
+                    console.error("Error en signInAnonymously:", error);
+                });
+            }
+        
+        } catch (error) {
+            console.error("Error en inicialitzar Firebase:", error);
+        }
+        
+        // Funcions de Base de Dades
+        window.saveScore = async (score, correct, incorrect, userId) => {
+            if (!db || !auth.currentUser) {
+                console.error("Firebase no està inicialitzat o l'usuari no està autenticat.");
+                return;
+            }
+
+            const path = `/artifacts/${appId}/public/data/scores`;
+            try {
+                await addDoc(collection(db, path), {
+                    userId: userId,
+                    score: score,
+                    correct: correct,
+                    incorrect: incorrect,
+                    timestamp: new Date()
+                });
+                console.log("Puntuació desada amb èxit!");
+            } catch (e) {
+                console.error("Error desant la puntuació:", e);
+            }
+        };
+
+        window.fetchHighScores = async () => {
+            if (!db) return [];
+            const path = `/artifacts/${appId}/public/data/scores`;
+            try {
+                // IMPORTANT: Normalment utilitzaríem orderBy, però sense índexos s'ha d'evitar.
+                // Aquí, per simplificar l'ús de Canvas, mantenim l'orderBy.
+                const scoresQuery = query(collection(db, path), orderBy("correct", "desc"), limit(5));
+                const querySnapshot = await getDocs(scoresQuery);
+                
+                const scores = querySnapshot.docs.map(doc => ({
+                    ...doc.data(),
+                    id: doc.id
+                }));
+                return scores;
+            } catch (e) {
+                console.error("Error carregant puntuacions altes:", e);
+                return [];
+            }
+        };
+
+        window.getAuth = () => auth; // Exposar auth per a ús global
+    </script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col items-center p-4">
+
+    <div id="app" class="w-full max-w-4xl bg-white p-6 md:p-10 rounded-xl shadow-2xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-indigo-700 mb-2">Passaparaula de la Mari</h1>
+            <p class="text-gray-600">19 d'octubre de 2025</p>
+            <p id="user-info" class="text-xs text-gray-400 mt-2">ID d'Usuari: Carregant...</p>
+        </header>
+
+        <main class="flex flex-col md:flex-row gap-8">
+            <!-- Rosco (Anell) -->
+            <div class="md:w-1/2 flex justify-center items-center">
+                <div id="rosco" class="rosco-container">
+                    <!-- Les lletres es generaran aquí amb JavaScript -->
+                </div>
+            </div>
+
+            <!-- Àrea de Joc i Pregunta -->
+            <div class="md:w-1/2">
+                <div id="game-area" class="bg-indigo-50 p-6 rounded-lg shadow-inner">
+                    <div id="current-question-display" class="mb-6 h-32 flex items-center justify-center text-center">
+                        <p id="question-text" class="text-xl font-semibold text-gray-800 transition-opacity duration-300">
+                            Fes clic a "Començar Joc" per iniciar!
+                        </p>
+                    </div>
+
+                    <div class="flex items-center justify-center mb-6">
+                        <span id="current-letter-display" class="text-6xl font-black text-indigo-700 mr-4 transition-transform duration-300 transform scale-100">?</span>
+                        <button id="tts-btn" class="tts-button bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-full disabled:opacity-50" disabled onclick="readQuestion()">
+                            🔊 Llegeix
+                        </button>
+                    </div>
+
+                    <input type="text" id="answer-input" class="w-full p-3 mb-4 border-2 border-indigo-300 rounded-lg text-center text-lg focus:border-indigo-500 focus:outline-none" placeholder="Escriu la teva resposta...">
+                    
+                    <div class="grid grid-cols-3 gap-3">
+                        <button id="check-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-md transition-all duration-200 disabled:opacity-50" disabled onclick="checkAnswer()">
+                            Contestar
+                        </button>
+                        <button id="pass-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl shadow-md transition-all duration-200 disabled:opacity-50" disabled onclick="passLetter()">
+                            Passar
+                        </button>
+                        <button id="start-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md transition-all duration-200" onclick="startGame()">
+                            Començar Joc
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Puntuació -->
+                <div id="score-area" class="mt-6 p-4 bg-white rounded-lg shadow-lg grid grid-cols-2 gap-4 text-center">
+                    <div class="bg-green-100 p-3 rounded-lg">
+                        <p class="text-sm text-green-700 font-medium">Encerts</p>
+                        <p id="correct-count" class="text-3xl font-extrabold text-green-600">0</p>
+                    </div>
+                    <div class="bg-red-100 p-3 rounded-lg">
+                        <p class="text-sm text-red-700 font-medium">Errors</p>
+                        <p id="incorrect-count" class="text-3xl font-extrabold text-red-600">0</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Puntuacions altes (High Scores) -->
+        <div class="mt-10 pt-6 border-t border-gray-200">
+            <h2 class="text-2xl font-bold text-indigo-700 mb-4 text-center">Puntuacions Més Altes (Top 5)</h2>
+            <div id="high-scores-list" class="space-y-2">
+                <!-- Les puntuacions es carregaran aquí -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Modal de Final de Joc -->
+    <div id="end-game-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white p-8 rounded-xl shadow-2xl text-center max-w-sm w-full">
+            <h2 class="text-3xl font-bold text-indigo-700 mb-4">🏆 Joc Acabat! 🏆</h2>
+            <p id="final-result" class="text-xl mb-6 text-gray-700">Has tingut X encerts i Y errors.</p>
+            <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition" onclick="window.location.reload()">
+                Tornar a Jugar
+            </button>
+        </div>
+    </div>
+
+
+    <script>
+        // ==========================================================
+        // DADES DEL JOC: PREGUNTES I RESPOSTES
+        // ==========================================================
+        // ATENCIÓ: Aquí és on pots personalitzar totes les teves preguntes!
+        // El format ha de ser: { letter: 'LLETRA', question: 'DEFINICIÓ', answer: 'RESPOSTA' }
+        // La RESPOSTA ha de començar per la LLETRA indicada.
+        // Recorda: Utilitza només majúscules i sense accents ni símbols a la RESPOSTA per simplificar la comprovació!
+
+               const ROSCO_DATA_TEMPLATE = [
+            { letter: 'A', question: 'COMENÇA PER LA A: Mes on et vas casar.', answer: 'Abril' },
+            { letter: 'B', question: 'COMENÇA PER LA B: Com es diu la protagonista de la pel·lícula que té una cançó que comença per "Se oye una canción que haci suspirar".', answer: 'BELLA' },
+            // CORRECCIÓ: Utilitzem cometes dobles per permetre l'apòstrof sense error de sintaxi.
+            { letter: 'C', question: "COMENÇA PER LA C: L'esdeveniment més multitudinari de Torelló.", answer: 'Carnaval' },
+            // CORRECCIÓ: Utilitzem cometes dobles per permetre l'apòstrof sense error de sintaxi.
+            { letter: 'D', question: "COMENÇA PER LA D: El que t'agradaria fer pel matí els dissabtes o tots els dies si et deixessin.", answer: 'Dormir' },
+            { letter: 'E', question: 'COMENÇA PER LA E: Com es diu esternut a Osona.', answer: 'Eixaviuro' },
+            { letter: 'F', question: 'COMENÇA PER LA F: Noms dels teus fills començant pel gran.', answer: 'Fèlix i Òscar' },
+            { letter: 'G', question: 'COMENÇA PER LA G: Cognom del cantautor de cançons com Me sube la bilirubina.', answer: 'Guerra' },
+            { letter: 'H', question: 'COMENÇA PER LA H: Poema japonès', answer: 'Haikú' },
+            { letter: 'I', question: 'COMENÇA PER LA I: Cançó en italià que els hi agrada molt als teus fills', answer: 'Italodisco' },
+            { letter: 'J', question: 'COMENÇA PER LA J: Festa menorquina amb cavalls.', answer: 'Jaleo' },
+            { letter: 'K', question: 'COMENÇA PER LA K: Unitat de massa del sistema internacional.', answer: 'Kilogram' },
+            { letter: 'L', question: 'COMENÇA PER LA L: El clon del teu marit.', answer: 'Llorenç' },
+            { letter: 'M', question: 'COMENÇA PER LA M: Un dels grups preferits dels teus pares.', answer: 'Mocedades' },
+            { letter: 'N', question: 'COMENÇA PER LA N: Segon gas noble de la taula periòdica', answer: 'Neó' },
+            { letter: 'O', question: 'COMENÇA PER LA O: Plat menorquí fet amb tomàquets on l aigua no ha de bullir', answer: 'Oliaigu' },
+            { letter: 'P', question: "COMENÇA PER LA P: Si tens alguna que s'ha espatllat, a qui avisaràs?.", answer: 'Paco' },
+            { letter: 'Q', question: 'COMENÇA PER LA Q: Quants anys tens?', answer: 'Quaranta' },
+            { letter: 'R', question: 'COMENÇA PER LA R: Musical que anirem a veure a Madrid.', answer: 'Rey León' },
+            { letter: 'S', question: 'COMENÇA PER LA S: Nom del teu germà', answer: 'Siscu' },
+            { letter: 'T', question: 'COMENÇA PER LA T: El millor poble del món', answer: 'Torelló' },
+            { letter: 'U', question: "COMENÇA PER LA U: Antic nom per a l'element 112 que ara es diu Copernici", answer: 'Ununbi' },
+            { letter: 'V', question: 'COMENÇA PER LA V: Ciutat on vas veure a la Alaska i on també se celebren les falles', answer: 'València' },
+            { letter: 'W', question: 'COMENÇA PER LA W: Pel·lícula que vas veure amb els nens fa poc sobre un nen autista', answer: 'Wolfang' },
+            { letter: 'X', question: 'COMENÇA PER LA X: Grup de música infantil', answer: 'Xiula' },
+            { letter: 'Y', question: 'COMENÇA PER LA Y: Com acaba la canço de la Megui.', answer: 'Yeah' },
+            { letter: 'Z', question: 'COMENÇA PER LA Z: Grup de música valencià que té una cançó que es diu Tobogan', answer: 'Zoo' },
+        ];
+
+
+        // ==========================================================
+        // VARIABLES GLOBALS DEL JOC
+        // ==========================================================
+        let rosco = [];
+        let currentIndex = 0;
+        let correctCount = 0;
+        let incorrectCount = 0;
+        let isGameRunning = false;
+        let passedLetters = [];
+        let userId = 'default-user';
+
+
+        // ==========================================================
+        // FUNCIONS D'UTILITAT
+        // ==========================================================
+
+        // Funció per netejar la resposta de l'usuari i la resposta correcta (majúscules i accents)
+        const normalizeText = (text) => {
+            return text.toUpperCase()
+                       .normalize("NFD")
+                       .replace(/[\u0300-\u036f]/g, "")
+                       .replace(/[^A-Z0-9]/g, ''); // Només lletres i números
+        };
+
+        // ==========================================================
+        // LÒGICA DE LA BASE DE DADES (Firestore)
+        // ==========================================================
+
+        async function loadHighScores() {
+            const highScoresList = document.getElementById('high-scores-list');
+            highScoresList.innerHTML = '<p class="text-center text-gray-500">Carregant puntuacions...</p>';
+            
+            const scores = await window.fetchHighScores();
+
+            if (scores.length === 0) {
+                highScoresList.innerHTML = '<p class="text-center text-gray-500">Encara no hi ha puntuacions registrades.</p>';
+                return;
+            }
+
+            highScoresList.innerHTML = scores.map((score, index) => `
+                <div class="flex justify-between items-center bg-gray-100 p-3 rounded-lg shadow-sm">
+                    <span class="font-bold text-lg text-indigo-800">${index + 1}.</span>
+                    <span class="text-sm text-gray-600 truncate mr-4">Usuari: ${score.userId.substring(0, 8)}...</span>
+                    <span class="font-semibold text-green-600">${score.correct} encerts</span>
+                    <span class="font-semibold text-red-600">${score.incorrect} errors</span>
+                </div>
+            `).join('');
+        }
+
+        // ==========================================================
+        // TEXT-TO-SPEECH (TTS) amb Gemini API
+        // ==========================================================
+        
+        // CORRECCIÓ: Fem la funció global assignant-la a window per resoldre el ReferenceError.
+        window.readQuestion = async function() {
+            if (!isGameRunning || !rosco[currentIndex]) return;
+
+            const questionText = rosco[currentIndex].question;
+            const ttsBtn = document.getElementById('tts-btn');
+            const originalText = ttsBtn.innerHTML;
+
+            ttsBtn.disabled = true;
+            ttsBtn.innerHTML = '🎶 Reproduint...';
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: `Digues amb un to seriós i clar en català: ${questionText}` }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: "Kore" }
+                        }
+                    }
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+            // Helper per a base64 a ArrayBuffer
+            const base64ToArrayBuffer = (base64) => {
+                const binary_string = window.atob(base64);
+                const len = binary_string.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binary_string.charCodeAt(i);
+                }
+                return bytes.buffer;
+            };
+
+            // Helper per a PCM a WAV
+            const pcmToWav = (pcm16, sampleRate) => {
+                const numChannels = 1;
+                const sampleLength = pcm16.length;
+                const buffer = new ArrayBuffer(44 + sampleLength * 2);
+                const view = new DataView(buffer);
+                let offset = 0;
+
+                const writeString = (str) => {
+                    for (let i = 0; i < str.length; i++) {
+                        view.setUint8(offset++, str.charCodeAt(i));
+                    }
+                };
+
+                // RIFF identifier
+                writeString('RIFF');
+                // file size (byte total - 8)
+                view.setUint32(offset, 36 + sampleLength * 2, true); offset += 4;
+                // 'WAVE' identifier
+                writeString('WAVE');
+                // format chunk identifier
+                writeString('fmt ');
+                // format chunk length
+                view.setUint32(offset, 16, true); offset += 4;
+                // sample format (1 = PCM)
+                view.setUint16(offset, 1, true); offset += 2;
+                // number of channels
+                view.setUint16(offset, numChannels, true); offset += 2;
+                // sample rate
+                view.setUint32(offset, sampleRate, true); offset += 4;
+                // byte rate (SampleRate * NumChannels * BitsPerSample/8)
+                view.setUint32(offset, sampleRate * numChannels * 2, true); offset += 4;
+                // block align (NumChannels * BitsPerSample/8)
+                view.setUint16(offset, numChannels * 2, true); offset += 2;
+                // bits per sample
+                view.setUint16(offset, 16, true); offset += 2;
+                // data chunk identifier
+                writeString('data');
+                // data chunk length
+                view.setUint32(offset, sampleLength * 2, true); offset += 4;
+
+                // PCM data
+                for (let i = 0; i < sampleLength; i++) {
+                    view.setInt16(offset, pcm16[i], true); offset += 2;
+                }
+
+                return new Blob([view], { type: 'audio/wav' });
+            };
+
+
+            try {
+                let response = null;
+                for (let i = 0; i < 3; i++) { // 3 intents amb backoff
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) break;
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+
+                if (!response || !response.ok) throw new Error("API call failed after retries.");
+
+                const result = await response.json();
+                const part = result?.candidates?.[0]?.content?.parts?.[0];
+                const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
+
+                if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                    const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+                    if (!sampleRateMatch) throw new Error("Sample rate not found in MIME type.");
+                    
+                    const sampleRate = parseInt(sampleRateMatch[1], 10);
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    
+                    const wavBlob = pcmToWav(pcm16, sampleRate);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    
+                    const audio = new Audio(audioUrl);
+                    audio.onended = () => {
+                        ttsBtn.innerHTML = originalText;
+                        ttsBtn.disabled = false;
+                        URL.revokeObjectURL(audioUrl);
+                    };
+                    audio.play();
+                } else {
+                    console.error("No es va poder generar l'àudio o el format és incorrecte.");
+                    ttsBtn.innerHTML = "❌ Error TTS";
+                    setTimeout(() => { ttsBtn.innerHTML = originalText; ttsBtn.disabled = false; }, 2000);
+                }
+            } catch (error) {
+                console.error("Error en el procés de TTS:", error);
+                ttsBtn.innerHTML = "❌ Error TTS";
+                setTimeout(() => { ttsBtn.innerHTML = originalText; ttsBtn.disabled = false; }, 2000);
+            }
+        };
+
+
+        // ==========================================================
+        // FUNCIONS DEL JOC
+        // ==========================================================
+
+        function createRoscoCircles() {
+            const roscoEl = document.getElementById('rosco');
+            roscoEl.innerHTML = '';
+            const totalLetters = rosco.length;
+            const radius = 150; // Ràdio del Rosco en píxels
+
+            rosco.forEach((item, index) => {
+                // Calcular l'angle per a la posició de la lletra
+                const angle = (index / totalLetters) * 2 * Math.PI; // Angle en radians
+                
+                // Calcular les coordenades (x, y)
+                const x = radius + radius * Math.sin(angle);
+                const y = radius - radius * Math.cos(angle);
+
+                const circle = document.createElement('div');
+                circle.className = `letter-circle unanswered`;
+                circle.id = `letter-${item.letter}`;
+                circle.textContent = item.letter;
+                
+                // Aplicar la posició amb transform: translate
+                // El translate(-50%, -50%) centra l'element al punt calculat (x, y)
+                circle.style.transform = `translate(${x - 25}px, ${y - 25}px)`;
+                
+                // Permetre fer clic a la lletra per anar-hi directament (si no està contestada)
+                circle.onclick = () => selectLetter(item.letter);
+
+                roscoEl.appendChild(circle);
+            });
+        }
+
+        function updateRoscoDisplay() {
+            rosco.forEach((item, index) => {
+                const circle = document.getElementById(`letter-${item.letter}`);
+                if (!circle) return;
+
+                // Reset de classes
+                circle.className = 'letter-circle';
+                
+                // Aplicar classe d'estat
+                if (item.status === 'correct') {
+                    circle.classList.add('correct');
+                } else if (item.status === 'incorrect') {
+                    circle.classList.add('incorrect');
+                } else if (item.status === 'passed') {
+                    circle.classList.add('passed');
+                } else {
+                    circle.classList.add('unanswered');
+                }
+
+                // Si és la lletra actual, aplicar la classe 'current'
+                if (index === currentIndex && item.status !== 'correct' && item.status !== 'incorrect') {
+                    circle.classList.add('current');
+                }
+            });
+        }
+
+        function displayCurrentQuestion() {
+            const current = rosco[currentIndex];
+            document.getElementById('question-text').textContent = current.question;
+            document.getElementById('current-letter-display').textContent = current.letter;
+            document.getElementById('answer-input').value = ''; // Netejar input
+            document.getElementById('tts-btn').disabled = false;
+        }
+
+        function enableControls(enable) {
+            document.getElementById('check-btn').disabled = !enable;
+            document.getElementById('pass-btn').disabled = !enable;
+            document.getElementById('answer-input').disabled = !enable;
+            if (!enable) {
+                document.getElementById('tts-btn').disabled = true;
+            }
+        }
+        
+        function selectLetter(letter) {
+            const index = rosco.findIndex(item => item.letter === letter && item.status !== 'correct' && item.status !== 'incorrect');
+            if (index !== -1) {
+                currentIndex = index;
+                displayCurrentQuestion();
+                updateRoscoDisplay();
+            }
+        }
+
+        function findNextLetter(startIndex = currentIndex, initialPass = false) {
+            const total = rosco.length;
+            
+            // Buscar la següent lletra que NO estigui contestada (unanswered o passed)
+            for (let i = 1; i <= total; i++) {
+                const nextIndex = (startIndex + i) % total;
+                const nextItem = rosco[nextIndex];
+
+                if (nextItem.status === 'unanswered' || nextItem.status === 'passed') {
+                    // Si és la primera passada (initialPass), ignorem les 'passed'
+                    if (initialPass && nextItem.status === 'passed') {
+                        continue;
+                    }
+                    return nextIndex;
+                }
+            }
+            return -1; // Totes contestades
+        }
+
+        function goToNextQuestion() {
+            const nextIndex = findNextLetter(currentIndex);
+
+            if (nextIndex !== -1) {
+                currentIndex = nextIndex;
+                displayCurrentQuestion();
+                updateRoscoDisplay();
+            } else {
+                // Si no hi ha següent, busquem si hi ha alguna 'passed'
+                const passedIndex = findNextLetter(-1, true); // Comença des del principi, només buscant 'passed'
+                if (passedIndex !== -1) {
+                    currentIndex = passedIndex;
+                    displayCurrentQuestion();
+                    updateRoscoDisplay();
+                } else {
+                    endGame();
+                }
+            }
+        }
+
+        window.checkAnswer = () => {
+            if (!isGameRunning) return;
+
+            const current = rosco[currentIndex];
+            const userInput = document.getElementById('answer-input').value;
+
+            // Netejar i normalitzar text
+            const normalizedAnswer = normalizeText(current.answer);
+            const normalizedInput = normalizeText(userInput);
+
+            if (normalizedInput === normalizedAnswer) {
+                current.status = 'correct';
+                correctCount++;
+                document.getElementById('correct-count').textContent = correctCount;
+            } else {
+                current.status = 'incorrect';
+                incorrectCount++;
+                document.getElementById('incorrect-count').textContent = incorrectCount;
+            }
+
+            goToNextQuestion();
+        };
+
+        window.passLetter = () => {
+            if (!isGameRunning) return;
+
+            const current = rosco[currentIndex];
+            if (current.status === 'unanswered') {
+                current.status = 'passed';
+            }
+
+            goToNextQuestion();
+        };
+
+        function endGame() {
+            isGameRunning = false;
+            enableControls(false);
+            
+            // Mostrar modal de final de joc
+            document.getElementById('final-result').textContent = `Has tingut ${correctCount} encerts i ${incorrectCount} errors.`;
+            document.getElementById('end-game-modal').classList.remove('hidden');
+
+            // Desem la puntuació
+            window.saveScore(correctCount - incorrectCount, correctCount, incorrectCount, userId);
+            
+            // Actualitzem les puntuacions altes
+            loadHighScores();
+        }
+
+        window.startGame = () => {
+            // Inicialitzar dades del rosco
+            rosco = ROSCO_DATA_TEMPLATE.map(item => ({
+                ...item,
+                status: 'unanswered'
+            }));
+
+            currentIndex = 0;
+            correctCount = 0;
+            incorrectCount = 0;
+            isGameRunning = true;
+
+            document.getElementById('correct-count').textContent = '0';
+            document.getElementById('incorrect-count').textContent = '0';
+            document.getElementById('end-game-modal').classList.add('hidden');
+            document.getElementById('start-btn').textContent = 'Reiniciar Joc';
+
+            createRoscoCircles();
+            displayCurrentQuestion();
+            enableControls(true);
+            updateRoscoDisplay();
+        };
+        
+        // Gestió de l'enter a l'input
+        document.getElementById('answer-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('check-btn').click();
+            }
+        });
+
+        // ==========================================================
+        // INICIALITZACIÓ
+        // ==========================================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Esperar que l'autenticació de Firebase es completi
+            const authInstance = window.getAuth();
+            if (authInstance) {
+                authInstance.onAuthStateChanged(user => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('user-info').textContent = `ID d'Usuari: ${userId}`;
+                        loadHighScores();
+                    }
+                });
+            } else {
+                loadHighScores();
+            }
+        });
+    </script>
+</body>
+</html>
